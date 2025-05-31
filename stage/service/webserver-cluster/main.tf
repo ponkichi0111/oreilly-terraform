@@ -8,12 +8,12 @@ resource "aws_launch_template" "example" {
   instance_type          = "t2.micro"
   vpc_security_group_ids = [aws_security_group.instance.id]
 
-  user_data = base64encode(<<-EOF
-              #!/bin/bash
-              echo "Hello, World" > index.html
-              nohup python3 -m http.server ${var.server_port} &
-              EOF
-              )
+  user_data = base64encode(templatefile("user-data.sh", {
+    server_port = var.server_port
+    db_address  = data.terraform_remote_state.db.outputs.address
+    db_port     = data.terraform_remote_state.db.outputs.port
+  })
+  )
 
   tags = {
     Name = "terraform-example"
@@ -145,4 +145,24 @@ data "aws_subnets" "default" {
 output "alb_dns_name" {
   value       = aws_alb.example.dns_name
   description = "The domain name of the load balancer"
+}
+
+data "terraform_remote_state" "db" {
+  backend = "s3"
+
+  config = {
+    bucket = "terraform-state-hiroyuki-2025-05-31"
+    key    = "stage/data-stores/mysql/terraform.tfstate"
+    region = "ap-northeast-1"
+  }
+}
+
+terraform {
+  backend "s3" {
+    bucket         = "terraform-state-hiroyuki-2025-05-31"
+    key            = "stage/service/web-server-cluster/terraform.tfstate"
+    region         = "ap-northeast-1"
+    dynamodb_table = "terraform-locks-hiroyuki"
+    encrypt        = true
+  }
 }
