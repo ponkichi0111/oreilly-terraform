@@ -3,7 +3,7 @@ resource "aws_launch_template" "example" {
   instance_type          = var.instance_type
   vpc_security_group_ids = [aws_security_group.instance.id]
 
-  user_data = base64encode(templatefile("user-data.sh", {
+  user_data = base64encode(templatefile("${path.module}/user-data.sh", {
     server_port = var.server_port
     db_address  = data.terraform_remote_state.db.outputs.address
     db_port     = data.terraform_remote_state.db.outputs.port
@@ -44,6 +44,16 @@ resource "aws_security_group" "instance" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+}
+
+resource "aws_security_group_rule" "allow_tcp_inbound" {
+  security_group_id = aws_security_group.instance.id
+  type = "ingress"
+
+  from_port   = var.server_port
+  to_port     = var.server_port
+  protocol    = local.tcp_protocol
+  cidr_blocks = local.all_ips
 }
 
 resource "aws_alb" "example" {
@@ -104,26 +114,26 @@ resource "aws_alb_listener_rule" "asg" {
 
 resource "aws_security_group" "alb" {
   name = "${var.cluster_name}-alb"
-
-  ingress {
-    from_port   = local.http_port
-    to_port     = local.http_port
-    protocol    = local.tcp_protocol
-    cidr_blocks = local.all_ips
-  }
-
-  egress {
-    from_port   = local.any_port
-    to_port     = local.any_port
-    protocol    = local.any_protocol
-    cidr_blocks = local.all_ips
-  }
 }
 
-variable "server_port" {
-  description = "The port the server will use for HTTP requests"
-  type        = number
-  default     = 8080
+resource "aws_security_group_rule" "allow_http_inbound" {
+  type = "ingress"
+  security_group_id = aws_security_group.alb.id
+
+  from_port   = local.http_port
+  to_port     = local.http_port
+  protocol    = local.tcp_protocol
+  cidr_blocks = local.all_ips
+}
+
+resource "aws_security_group_rule" "allow_all_outbound" {
+  type = "egress"
+  security_group_id = aws_security_group.alb.id
+
+  from_port   = local.any_port
+  to_port     = local.any_port
+  protocol    = local.any_protocol
+  cidr_blocks = local.all_ips
 }
 
 data "aws_vpc" "default" {
@@ -135,11 +145,6 @@ data "aws_subnets" "default" {
     name   = "vpc-id"
     values = [ data.aws_vpc.default.id ]
   }
-}
-
-output "alb_dns_name" {
-  value       = aws_alb.example.dns_name
-  description = "The domain name of the load balancer"
 }
 
 data "terraform_remote_state" "db" {
