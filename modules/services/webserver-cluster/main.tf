@@ -1,6 +1,6 @@
 resource "aws_launch_template" "example" {
   image_id               = "ami-0c1638aa346a43fe8"
-  instance_type          = "t2.micro"
+  instance_type          = var.instance_type
   vpc_security_group_ids = [aws_security_group.instance.id]
 
   user_data = base64encode(templatefile("user-data.sh", {
@@ -16,8 +16,8 @@ resource "aws_launch_template" "example" {
 }
 
 resource "aws_autoscaling_group" "example" {
-  max_size             = 5
-  min_size             = 2
+  max_size             = var.max_size
+  min_size             = var.min_size
   vpc_zone_identifier  = data.aws_subnets.default.ids
 
   target_group_arns = [ aws_lb_target_group.asg.arn ]
@@ -55,7 +55,7 @@ resource "aws_alb" "example" {
 
 resource "aws_alb_listener" "http" {
   load_balancer_arn = aws_alb.example.arn
-  port     = 80
+  port     = local.http_port
   protocol = "HTTP"
 
   default_action {
@@ -106,17 +106,17 @@ resource "aws_security_group" "alb" {
   name = "${var.cluster_name}-alb"
 
   ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    from_port   = local.http_port
+    to_port     = local.http_port
+    protocol    = local.tcp_protocol
+    cidr_blocks = local.all_ips
   }
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    from_port   = local.any_port
+    to_port     = local.any_port
+    protocol    = local.any_protocol
+    cidr_blocks = local.all_ips
   }
 }
 
@@ -160,4 +160,12 @@ terraform {
     dynamodb_table = "terraform-locks-hiroyuki"
     encrypt        = true
   }
+}
+
+locals {
+  http_port    = 80
+  any_port     = 0
+  any_protocol = "-1"
+  tcp_protocol = "tcp"
+  all_ips      = ["0.0.0.0/0"]
 }
