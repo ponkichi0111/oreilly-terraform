@@ -1,8 +1,3 @@
-provider "aws" {
-  region  = "ap-northeast-1"
-  profile = "dev"
-}
-
 resource "aws_launch_template" "example" {
   image_id               = "ami-0c1638aa346a43fe8"
   instance_type          = "t2.micro"
@@ -35,13 +30,13 @@ resource "aws_autoscaling_group" "example" {
 
   tag {
     key                 = "Name"
-    value               = "terraform-asg-example"
+    value               = "${var.cluster_name}-alb"
     propagate_at_launch = true
   }
 }
 
 resource "aws_security_group" "instance" {
-  name = "terraform-example-instance"
+  name = "${var.cluster_name}-instance"
 
   ingress {
     from_port   = var.server_port
@@ -52,15 +47,15 @@ resource "aws_security_group" "instance" {
 }
 
 resource "aws_alb" "example" {
-  name               = "terraform-asg-example"
+  name               = "${var.cluster_name}-alb"
   load_balancer_type = "application"
   subnets            = data.aws_subnets.default.ids
-  security_groups = [ aws_security_group.alb.id ]
+  security_groups    = [ aws_security_group.alb.id ]
 }
 
 resource "aws_alb_listener" "http" {
   load_balancer_arn = aws_alb.example.arn
-  port = 80
+  port     = 80
   protocol = "HTTP"
 
   default_action {
@@ -69,16 +64,16 @@ resource "aws_alb_listener" "http" {
     fixed_response {
       content_type = "text/plain"
       message_body = "404: page not found"
-      status_code = 404
+      status_code  = 404
     }
   }
 }
 
 resource "aws_lb_target_group" "asg" {
-  name = "terraform-asg-example"
-  port = var.server_port
+  name     = "${var.cluster_name}-alb"
+  port     = var.server_port
   protocol = "HTTP"
-  vpc_id = data.aws_vpc.default.id
+  vpc_id   = data.aws_vpc.default.id
 
   health_check {
     path                = "/"
@@ -93,7 +88,7 @@ resource "aws_lb_target_group" "asg" {
 
 resource "aws_alb_listener_rule" "asg" {
   listener_arn = aws_alb_listener.http.arn
-  priority = 100
+  priority     = 100
 
   condition {
     path_pattern {
@@ -108,19 +103,19 @@ resource "aws_alb_listener_rule" "asg" {
 }
 
 resource "aws_security_group" "alb" {
-  name = "terraform-example-alb"
+  name = "${var.cluster_name}-alb"
 
   ingress {
-    from_port = 80
-    to_port = 80
-    protocol = "tcp"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
-    from_port = 0
-    to_port = 0
-    protocol = "-1"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
@@ -151,8 +146,8 @@ data "terraform_remote_state" "db" {
   backend = "s3"
 
   config = {
-    bucket = "terraform-state-hiroyuki-2025-05-31"
-    key    = "stage/data-stores/mysql/terraform.tfstate"
+    bucket = var.db_remote_state_bucket
+    key    = var.db_remote_stae_key
     region = "ap-northeast-1"
   }
 }
@@ -160,7 +155,7 @@ data "terraform_remote_state" "db" {
 terraform {
   backend "s3" {
     bucket         = "terraform-state-hiroyuki-2025-05-31"
-    key            = "stage/service/web-server-cluster/terraform.tfstate"
+    key            = var.db_remote_stae_key
     region         = "ap-northeast-1"
     dynamodb_table = "terraform-locks-hiroyuki"
     encrypt        = true
